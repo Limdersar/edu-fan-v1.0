@@ -27,14 +27,15 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         // --- 1. 환경 설정 ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "", // 깃허브 배포 시 여기에 본인의 API KEY 입력
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: ""
-        };
+        const firebaseConfig = {
+  apiKey: "AIzaSyCHZ4mmnkEkbfdB-n-MuxAYgZY793opNIQ",
+  authDomain: "fan-edu-v1.firebaseapp.com",
+  projectId: "fan-edu-v1",
+  storageBucket: "fan-edu-v1.firebasestorage.app",
+  messagingSenderId: "363111742847",
+  appId: "1:363111742847:web:1c00d8ef30c229cc196e4a",
+  measurementId: "G-8BLR7P7N97"
+};
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'edu-reg-200';
         const MAX_CAPACITY = 11;

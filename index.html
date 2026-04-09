@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>교육 신청 시스템</title>
+    <title>2026 교육 신청 시스템</title>
     <!-- CSS: Tailwind & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -15,7 +15,18 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .loading-overlay { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(4px); }
-        .session-btn.selected { border-color: #3b82f6; background-color: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe; }
+        
+        .session-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border-width: 2px; }
+        .session-btn.selected { 
+            border-color: #2563eb; 
+            background-color: #eff6ff; 
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+            transform: translateY(-2px);
+        }
+        .session-btn:not(:disabled):hover {
+            transform: translateY(-1px);
+            border-color: #3b82f6;
+        }
     </style>
 </head>
 <body>
@@ -37,16 +48,27 @@
             measurementId: "G-8BLR7P7N97"
         };
 
-        const appId = 'edu-reg-200';
+        const appId = 'edu-reg-2026-v2'; 
         const MAX_CAPACITY = 11;
         const ADMIN_PASSWORD = "admin1234";
         
+        // 요청하신 2026년 특정 날짜 리스트
         const TARGET_DATES = [
-            "2024-04-23", "2024-04-24", "2024-04-27", "2024-04-28", "2024-04-29",
-            "2025-05-06", "2025-05-07", "2025-05-08"
+            "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29",
+            "2026-05-06", "2026-05-07", "2026-05-08"
         ];
         
         const TERMS = "개인정보 수집 및 이용에 동의합니다. (수집항목: 대리점명, 이름, 연락처 / 보유기간: 교육 종료 후 1년)";
+
+        const getDayOfWeek = (dateString) => {
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            return days[new Date(dateString).getDay()];
+        };
+
+        const formatDisplayDate = (dateString) => {
+            const [y, m, d] = dateString.split('-');
+            return `${parseInt(m)}/${parseInt(d)} (${getDayOfWeek(dateString)})`;
+        };
 
         // --- 2. 상태 관리 ---
         let state = {
@@ -86,7 +108,7 @@
                 });
             } catch (err) {
                 console.error("Firebase Init Error:", err);
-                render(); // 에러 발생 시에도 기본 화면은 띄움
+                render();
             }
         }
 
@@ -95,18 +117,17 @@
             onSnapshot(q, (snap) => {
                 state.registrations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 render(); 
-            }, (err) => console.error("Data Listen Error:", err));
+            });
         }
 
         function listenToSettings() {
-            // 경로 수정: doc(db, 'artifacts', appId, 'settings', 'config') 와 같이 짝수 세그먼트로 고정
             const docRef = doc(db, 'artifacts', appId, 'settings', 'config');
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     state.settings = docSnap.data();
                 }
                 render();
-            }, (err) => console.error("Settings Listen Error:", err));
+            });
         }
 
         window.selectSession = (date, time) => {
@@ -160,7 +181,7 @@
         }
 
         window.deleteRegistration = async (id) => {
-            if (!confirm("해당 신청 내역을 삭제하시겠습니까? 삭제 즉시 잔여석이 복구됩니다.")) return;
+            if (!confirm("해당 신청 내역을 삭제하시겠습니까?")) return;
             try {
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registrations', id));
             } catch (err) {
@@ -172,10 +193,9 @@
             const startAt = document.getElementById('settings-start').value;
             const endAt = document.getElementById('settings-end').value;
             try {
-                // 경로 수정: 'artifacts' -> 'appId' -> 'settings' -> 'config' (정확히 4개 세그먼트)
                 const docRef = doc(db, 'artifacts', appId, 'settings', 'config');
                 await setDoc(docRef, { startAt, endAt });
-                alert("접수 기간 설정이 저장되었습니다.");
+                alert("설정이 저장되었습니다.");
             } catch (err) {
                 alert("저장 실패: " + err.message);
             }
@@ -190,7 +210,7 @@
             const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `교육신청명단_${new Date().toISOString().slice(0,10)}.csv`;
+            link.download = `교육신청명단_2026.csv`;
             link.click();
         }
 
@@ -210,30 +230,23 @@
                 const isEnded = state.settings.endAt && new Date(state.settings.endAt) < now;
                 const canRegister = isStarted && !isEnded;
 
-                const sessions = [];
-                TARGET_DATES.forEach(dateStr => {
-                    ['오전', '오후'].forEach(t => {
-                        const count = state.registrations.filter(r => r.date === dateStr && r.time === t).length;
-                        sessions.push({ date: dateStr, time: t, count, available: count < MAX_CAPACITY });
-                    });
-                });
-
                 appDiv.innerHTML = `
                     <nav class="bg-white border-b sticky top-0 z-20">
                         <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
                             <h1 class="font-bold text-blue-700 text-lg flex items-center gap-2">
-                                <i class="fa-solid fa-calendar-check"></i> 교육 신청 시스템
+                                <i class="fa-solid fa-calendar-check"></i> 2026 교육 신청
                             </h1>
-                            <button onclick="window.toAdmin()" class="p-2 text-slate-400 hover:text-blue-600"><i class="fa-solid fa-gear"></i></button>
+                            <button onclick="window.toAdmin()" class="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+                                <i class="fa-solid fa-gear"></i>
+                            </button>
                         </div>
                     </nav>
 
                     <main class="max-w-5xl mx-auto px-4 py-8">
                         ${!canRegister ? `
-                            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 text-center text-amber-800">
-                                <i class="fa-solid fa-clock-rotate-left text-2xl mb-2"></i>
+                            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 text-center text-amber-800 shadow-sm animate-pulse">
                                 <p class="font-bold">${isEnded ? '접수 기간이 종료되었습니다.' : '아직 접수 기간이 아닙니다.'}</p>
-                                <p class="text-sm mt-1">접수 기간: ${state.settings.startAt?.replace('T',' ') || '미정'} ~ ${state.settings.endAt?.replace('T',' ') || '미정'}</p>
+                                <p class="text-sm mt-1 opacity-80">접수 기간: ${state.settings.startAt?.replace('T',' ') || '미정'} ~ ${state.settings.endAt?.replace('T',' ') || '미정'}</p>
                             </div>
                         ` : ''}
 
@@ -244,49 +257,81 @@
                                     <form id="main-form" class="space-y-4">
                                         <div>
                                             <label class="text-sm font-semibold text-slate-600 block mb-1">대리점명</label>
-                                            <input id="input-agency" type="text" required placeholder="대리점명을 입력하세요" class="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" value="${currentAgency}">
+                                            <input id="input-agency" type="text" required placeholder="대리점명을 입력하세요" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentAgency}">
                                         </div>
                                         <div>
                                             <label class="text-sm font-semibold text-slate-600 block mb-1">신청자 성함</label>
-                                            <input id="input-name" type="text" required placeholder="성함을 입력하세요" class="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" value="${currentName}">
+                                            <input id="input-name" type="text" required placeholder="성함을 입력하세요" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentName}">
                                         </div>
                                         <div>
                                             <label class="text-sm font-semibold text-slate-600 block mb-1">연락처</label>
-                                            <input id="input-phone" type="tel" required placeholder="010-0000-0000" class="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition" value="${currentPhone}">
+                                            <input id="input-phone" type="tel" required placeholder="010-0000-0000" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentPhone}">
                                         </div>
                                         <div class="pt-4 border-t">
-                                            <label class="flex items-start gap-3 cursor-pointer">
-                                                <input id="input-agree" type="checkbox" required class="mt-1 w-4 h-4 rounded text-blue-600" ${currentAgree ? 'checked' : ''}>
-                                                <span class="text-xs text-slate-500 leading-relaxed">${TERMS}</span>
+                                            <label class="flex items-start gap-3 cursor-pointer group">
+                                                <input id="input-agree" type="checkbox" required class="mt-1 w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500" ${currentAgree ? 'checked' : ''}>
+                                                <span class="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">${TERMS}</span>
                                             </label>
                                         </div>
-                                        <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition">신청하기</button>
+                                        <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 hover:shadow-blue-200 active:scale-[0.98] transition-all">신청하기</button>
                                     </form>
                                 </div>
                             </section>
 
-                            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full">
                                 <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-clock text-blue-500"></i> 교육 일정 선택</h2>
-                                <div class="grid grid-cols-2 gap-3 max-h-[550px] overflow-y-auto pr-2 custom-scrollbar">
-                                    ${sessions.map(s => {
-                                        const isSelected = state.selectedSession?.date === s.date && state.selectedSession?.time === s.time;
-                                        const displayTime = s.time === '오전' ? '9시' : '2시';
+                                <div class="grid grid-cols-1 gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1" style="max-height: 520px;">
+                                    ${TARGET_DATES.map(dateStr => {
+                                        const displayDate = formatDisplayDate(dateStr);
+                                        const amRegs = state.registrations.filter(r => r.date === dateStr && r.time === '오전').length;
+                                        const pmRegs = state.registrations.filter(r => r.date === dateStr && r.time === '오후').length;
+                                        
+                                        const isAmSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === '오전';
+                                        const isPmSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === '오후';
+
+                                        const amRemaining = MAX_CAPACITY - amRegs;
+                                        const pmRemaining = MAX_CAPACITY - pmRegs;
+
                                         return `
-                                            <button onclick="window.selectSession('${s.date}', '${s.time}')" 
-                                                ${!s.available ? 'disabled' : ''}
-                                                class="session-btn p-4 rounded-xl border text-left transition-all ${
-                                                    isSelected ? 'selected' :
-                                                    s.available ? 'border-slate-100 bg-white hover:border-blue-200' : 
-                                                    'bg-slate-50 opacity-40 cursor-not-allowed'
-                                                }">
-                                                <div class="text-[10px] font-bold text-slate-400 mb-1">${s.date}</div>
-                                                <div class="flex justify-between items-center">
-                                                    <span class="font-bold ${s.available ? 'text-slate-800' : 'text-slate-400'}">${s.time} ${displayTime}</span>
-                                                    <span class="text-[10px] px-1.5 py-0.5 rounded ${s.available ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'}">
-                                                        ${s.count}/${MAX_CAPACITY}
-                                                    </span>
+                                            <div class="p-4 border border-slate-100 bg-slate-50 rounded-2xl">
+                                                <div class="text-sm font-bold text-slate-800 mb-3 ml-1 flex items-center gap-2">
+                                                    <i class="fa-solid fa-calendar-day text-blue-400"></i> ${displayDate}
                                                 </div>
-                                            </button>
+                                                <div class="grid grid-cols-2 gap-3">
+                                                    <!-- 오전 버튼 -->
+                                                    <button onclick="window.selectSession('${dateStr}', '오전')" 
+                                                        ${amRemaining <= 0 ? 'disabled' : ''}
+                                                        class="session-btn p-3 rounded-xl border-2 text-left relative ${
+                                                            isAmSelected ? 'selected' :
+                                                            amRemaining > 0 ? 'bg-white border-slate-100' : 
+                                                            'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
+                                                        }">
+                                                        <div class="font-bold text-sm ${amRemaining > 0 ? 'text-slate-700' : 'text-slate-400'}">오전 9시</div>
+                                                        <div class="mt-1 flex flex-col">
+                                                            <span class="text-[10px] text-slate-400 font-medium">${amRegs}/${MAX_CAPACITY}</span>
+                                                            <span class="text-[11px] font-bold ${amRemaining > 0 ? 'text-blue-600' : 'text-slate-400'}">
+                                                                ${amRemaining <= 0 ? '마감' : amRemaining + '석 남음'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                    <!-- 오후 버튼 -->
+                                                    <button onclick="window.selectSession('${dateStr}', '오후')" 
+                                                        ${pmRemaining <= 0 ? 'disabled' : ''}
+                                                        class="session-btn p-3 rounded-xl border-2 text-left relative ${
+                                                            isPmSelected ? 'selected' :
+                                                            pmRemaining > 0 ? 'bg-white border-slate-100' : 
+                                                            'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
+                                                        }">
+                                                        <div class="font-bold text-sm ${pmRemaining > 0 ? 'text-slate-700' : 'text-slate-400'}">오후 2시</div>
+                                                        <div class="mt-1 flex flex-col">
+                                                            <span class="text-[10px] text-slate-400 font-medium">${pmRegs}/${MAX_CAPACITY}</span>
+                                                            <span class="text-[11px] font-bold ${pmRemaining > 0 ? 'text-blue-600' : 'text-slate-400'}">
+                                                                ${pmRemaining <= 0 ? '마감' : pmRemaining + '석 남음'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         `;
                                     }).join('')}
                                 </div>
@@ -304,9 +349,9 @@
                         <div class="min-h-screen flex items-center justify-center p-4">
                             <div class="bg-white p-8 rounded-2xl shadow-sm border w-full max-w-md">
                                 <h2 class="text-xl font-bold mb-6">관리자 로그인</h2>
-                                <input id="admin-pw" type="password" class="w-full p-3 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="비밀번호">
-                                <button onclick="window.loginAdmin()" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">로그인</button>
-                                <button onclick="window.setView('registration')" class="w-full mt-2 text-slate-400 text-sm">돌아가기</button>
+                                <input id="admin-pw" type="password" class="w-full p-4 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="비밀번호">
+                                <button onclick="window.loginAdmin()" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-black transition-colors">로그인</button>
+                                <button onclick="window.setView('registration')" class="w-full mt-4 text-slate-400 text-sm hover:underline text-center block">돌아가기</button>
                             </div>
                         </div>
                     `;
@@ -314,10 +359,10 @@
                     appDiv.innerHTML = `
                         <nav class="bg-white border-b sticky top-0 z-20">
                             <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-                                <h1 class="font-bold text-slate-800">관리자 패널</h1>
+                                <h1 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-user-shield text-blue-600"></i> 관리자 패널</h1>
                                 <div class="flex gap-2">
-                                    <button onclick="window.downloadCSV()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-2"></i>엑셀</button>
-                                    <button onclick="window.setView('registration')" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold">나가기</button>
+                                    <button onclick="window.downloadCSV()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"><i class="fa-solid fa-download mr-2"></i>엑셀</button>
+                                    <button onclick="window.setView('registration')" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200">나가기</button>
                                 </div>
                             </div>
                         </nav>
@@ -327,18 +372,18 @@
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                                     <div>
                                         <label class="text-xs text-slate-500 mb-1 block">시작 일시</label>
-                                        <input id="settings-start" type="datetime-local" class="w-full p-2 border rounded-lg" value="${state.settings.startAt || ''}">
+                                        <input id="settings-start" type="datetime-local" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value="${state.settings.startAt || ''}">
                                     </div>
                                     <div>
                                         <label class="text-xs text-slate-500 mb-1 block">종료 일시</label>
-                                        <input id="settings-end" type="datetime-local" class="w-full p-2 border rounded-lg" value="${state.settings.endAt || ''}">
+                                        <input id="settings-end" type="datetime-local" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value="${state.settings.endAt || ''}">
                                     </div>
-                                    <button onclick="window.updateSettings()" class="bg-blue-600 text-white py-2 rounded-lg font-bold">설정 저장</button>
+                                    <button onclick="window.updateSettings()" class="bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors">설정 저장</button>
                                 </div>
                             </section>
 
                             <div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
-                                <div class="p-4 bg-slate-50 border-b">
+                                <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
                                     <h3 class="font-bold">신청 명단 (${state.registrations.length}명)</h3>
                                 </div>
                                 <div class="overflow-x-auto">
@@ -355,12 +400,12 @@
                                         <tbody class="divide-y">
                                             ${state.registrations.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(r => `
                                                 <tr class="hover:bg-slate-50 transition">
-                                                    <td class="px-6 py-4 font-bold text-blue-600">${r.date} ${r.time}</td>
+                                                    <td class="px-6 py-4 font-bold text-blue-600">${formatDisplayDate(r.date)} ${r.time}</td>
                                                     <td class="px-6 py-4">${r.agency}</td>
                                                     <td class="px-6 py-4 font-semibold text-slate-800">${r.name}</td>
                                                     <td class="px-6 py-4 text-slate-600">${r.phone}</td>
                                                     <td class="px-6 py-4">
-                                                        <button onclick="window.deleteRegistration('${r.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition">
+                                                        <button onclick="window.deleteRegistration('${r.id}')" class="text-red-400 hover:text-red-600 p-2 rounded transition-colors">
                                                             <i class="fa-solid fa-trash-can"></i>
                                                         </button>
                                                     </td>
@@ -368,6 +413,7 @@
                                             `).join('')}
                                         </tbody>
                                     </table>
+                                    ${state.registrations.length === 0 ? '<div class="p-12 text-center text-slate-400">신청 내역이 없습니다.</div>' : ''}
                                 </div>
                             </div>
                         </main>
@@ -378,20 +424,21 @@
             else if (state.view === 'success') {
                 appDiv.innerHTML = `
                     <div class="min-h-screen flex items-center justify-center p-4">
-                        <div class="bg-white p-12 rounded-3xl shadow-xl border text-center max-w-sm w-full space-y-6">
-                            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+                        <div class="bg-white p-12 rounded-3xl shadow-xl border text-center max-w-sm w-full space-y-6 animate-in zoom-in duration-300">
+                            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-sm">
                                 <i class="fa-solid fa-check"></i>
                             </div>
-                            <h2 class="text-2xl font-bold">신청 완료</h2>
-                            <p class="text-slate-500">교육 접수가 정상적으로 완료되었습니다.</p>
-                            <button onclick="location.reload()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">홈으로 돌아가기</button>
+                            <div class="space-y-2">
+                                <h2 class="text-2xl font-bold">신청 완료</h2>
+                                <p class="text-slate-500">교육 접수가 정상적으로 완료되었습니다.</p>
+                            </div>
+                            <button onclick="location.reload()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors">홈으로 돌아가기</button>
                         </div>
                     </div>
                 `;
             }
         }
 
-        // --- 5. 전역 윈도우 함수 ---
         window.setView = (view) => setState({ view });
         window.toAdmin = () => setState({ view: 'admin' });
         window.loginAdmin = () => {

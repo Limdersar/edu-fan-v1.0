@@ -23,7 +23,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, runTransaction, query, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, onSnapshot, runTransaction, query, getDocs, deleteDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         // --- 1. 환경 설정 ---
@@ -41,7 +41,6 @@
         const MAX_CAPACITY = 11;
         const ADMIN_PASSWORD = "admin1234";
         
-        // 요청하신 특정 날짜 리스트
         const TARGET_DATES = [
             "2024-04-23", "2024-04-24", "2024-04-27", "2024-04-28", "2024-04-29",
             "2025-05-06", "2025-05-07", "2025-05-08"
@@ -56,7 +55,11 @@
             registrations: [],
             selectedSession: null,
             isAdminAuthenticated: false,
-            isSubmitting: false
+            isSubmitting: false,
+            settings: {
+                startAt: "",
+                endAt: ""
+            }
         };
 
         let db, auth;
@@ -76,7 +79,10 @@
                 await signInAnonymously(auth);
                 onAuthStateChanged(auth, (user) => {
                     state.user = user;
-                    if (user) listenToData();
+                    if (user) {
+                        listenToData();
+                        listenToSettings();
+                    }
                 });
             } catch (err) {
                 console.error(err);
@@ -87,9 +93,18 @@
         function listenToData() {
             const q = collection(db, 'artifacts', appId, 'public', 'data', 'registrations');
             onSnapshot(q, (snap) => {
-                const regs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                state.registrations = regs;
+                state.registrations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 render(); 
+            });
+        }
+
+        function listenToSettings() {
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings');
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    state.settings = docSnap.data();
+                }
+                render();
             });
         }
 
@@ -100,6 +115,12 @@
 
         async function handleRegister(e) {
             e.preventDefault();
+            
+            // 기간 체크
+            const now = new Date();
+            if (state.settings.startAt && new Date(state.settings.startAt) > now) return alert("아직 접수 기간이 아닙니다.");
+            if (state.settings.endAt && new Date(state.settings.endAt) < now) return alert("접수 기간이 종료되었습니다.");
+
             if (!state.selectedSession) return alert("교육 회차를 선택해주세요.");
             
             const agency = document.getElementById('input-agency').value;
@@ -138,6 +159,26 @@
             }
         }
 
+        window.deleteRegistration = async (id) => {
+            if (!confirm("해당 신청 내역을 삭제하시겠습니까? 삭제 즉시 잔여석이 복구됩니다.")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'registrations', id));
+            } catch (err) {
+                alert("삭제 실패: " + err.message);
+            }
+        };
+
+        window.updateSettings = async () => {
+            const startAt = document.getElementById('settings-start').value;
+            const endAt = document.getElementById('settings-end').value;
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings'), { startAt, endAt });
+                alert("접수 기간 설정이 저장되었습니다.");
+            } catch (err) {
+                alert("저장 실패: " + err.message);
+            }
+        };
+
         function downloadCSV() {
             const headers = ["신청날짜", "회차", "대리점", "이름", "연락처", "접수시각"];
             const rows = state.registrations.sort((a,b) => a.date.localeCompare(b.date)).map(r => [
@@ -154,14 +195,17 @@
         // --- 4. 렌더링 엔진 ---
         function render() {
             const appDiv = document.getElementById('app');
-            
-            // 입력 데이터 보존을 위해 현재 값 백업
             const currentAgency = document.getElementById('input-agency')?.value || "";
             const currentName = document.getElementById('input-name')?.value || "";
             const currentPhone = document.getElementById('input-phone')?.value || "";
             const currentAgree = document.getElementById('input-agree')?.checked || false;
 
             if (state.view === 'registration') {
+                const now = new Date();
+                const isStarted = !state.settings.startAt || new Date(state.settings.startAt) <= now;
+                const isEnded = state.settings.endAt && new Date(state.settings.endAt) < now;
+                const canRegister = isStarted && !isEnded;
+
                 const sessions = [];
                 TARGET_DATES.forEach(dateStr => {
                     ['오전', '오후'].forEach(t => {
@@ -181,8 +225,15 @@
                     </nav>
 
                     <main class="max-w-5xl mx-auto px-4 py-8">
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <!-- Left: Form -->
+                        ${!canRegister ? `
+                            <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 text-center text-amber-800">
+                                <i class="fa-solid fa-clock-rotate-left text-2xl mb-2"></i>
+                                <p class="font-bold">${isEnded ? '접수 기간이 종료되었습니다.' : '아직 접수 기간이 아닙니다.'}</p>
+                                <p class="text-sm mt-1">접수 기간: ${state.settings.startAt || '미정'} ~ ${state.settings.endAt || '미정'}</p>
+                            </div>
+                        ` : ''}
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 ${!canRegister ? 'opacity-50 pointer-events-none' : ''}">
                             <section class="space-y-6">
                                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                     <h2 class="text-lg font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i> 신청자 정보</h2>
@@ -210,13 +261,11 @@
                                 </div>
                             </section>
 
-                            <!-- Right: Sessions -->
                             <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                 <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-clock text-blue-500"></i> 교육 일정 선택</h2>
                                 <div class="grid grid-cols-2 gap-3 max-h-[550px] overflow-y-auto pr-2 custom-scrollbar">
                                     ${sessions.map(s => {
                                         const isSelected = state.selectedSession?.date === s.date && state.selectedSession?.time === s.time;
-                                        // 오전 시간대를 9시로 표시하도록 수정
                                         const displayTime = s.time === '오전' ? '9시' : '2시';
                                         return `
                                             <button onclick="window.selectSession('${s.date}', '${s.time}')" 
@@ -268,30 +317,58 @@
                                 </div>
                             </div>
                         </nav>
-                        <main class="max-w-6xl mx-auto px-4 py-8">
+                        <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+                            <!-- Settings Card -->
+                            <section class="bg-white p-6 rounded-2xl shadow-sm border">
+                                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-clock text-blue-500"></i> 접수 기간 설정</h2>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                    <div>
+                                        <label class="text-xs text-slate-500 mb-1 block">시작 일시</label>
+                                        <input id="settings-start" type="datetime-local" class="w-full p-2 border rounded-lg" value="${state.settings.startAt || ''}">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-slate-500 mb-1 block">종료 일시</label>
+                                        <input id="settings-end" type="datetime-local" class="w-full p-2 border rounded-lg" value="${state.settings.endAt || ''}">
+                                    </div>
+                                    <button onclick="window.updateSettings()" class="bg-blue-600 text-white py-2 rounded-lg font-bold">설정 저장</button>
+                                </div>
+                            </section>
+
+                            <!-- List Card -->
                             <div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
-                                <table class="w-full text-sm text-left">
-                                    <thead class="bg-slate-50 text-slate-500 font-semibold uppercase">
-                                        <tr>
-                                            <th class="px-6 py-4">교육일시</th>
-                                            <th class="px-6 py-4">대리점</th>
-                                            <th class="px-6 py-4">신청자</th>
-                                            <th class="px-6 py-4">연락처</th>
-                                            <th class="px-6 py-4">신청시각</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y">
-                                        ${state.registrations.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(r => `
-                                            <tr class="hover:bg-slate-50 transition">
-                                                <td class="px-6 py-4 font-bold text-blue-600">${r.date} ${r.time}</td>
-                                                <td class="px-6 py-4">${r.agency}</td>
-                                                <td class="px-6 py-4 font-semibold text-slate-800">${r.name}</td>
-                                                <td class="px-6 py-4 text-slate-600">${r.phone}</td>
-                                                <td class="px-6 py-4 text-slate-400 text-[10px]">${r.createdAt.slice(0,16).replace('T', ' ')}</td>
+                                <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
+                                    <h3 class="font-bold">신청 명단 (${state.registrations.length}명)</h3>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm text-left">
+                                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase">
+                                            <tr>
+                                                <th class="px-6 py-4">교육일시</th>
+                                                <th class="px-6 py-4">대리점</th>
+                                                <th class="px-6 py-4">신청자</th>
+                                                <th class="px-6 py-4">연락처</th>
+                                                <th class="px-6 py-4">신청시각</th>
+                                                <th class="px-6 py-4">관리</th>
                                             </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody class="divide-y">
+                                            ${state.registrations.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(r => `
+                                                <tr class="hover:bg-slate-50 transition">
+                                                    <td class="px-6 py-4 font-bold text-blue-600">${r.date} ${r.time}</td>
+                                                    <td class="px-6 py-4">${r.agency}</td>
+                                                    <td class="px-6 py-4 font-semibold text-slate-800">${r.name}</td>
+                                                    <td class="px-6 py-4 text-slate-600">${r.phone}</td>
+                                                    <td class="px-6 py-4 text-slate-400 text-[10px]">${r.createdAt.slice(0,16).replace('T', ' ')}</td>
+                                                    <td class="px-6 py-4">
+                                                        <button onclick="window.deleteRegistration('${r.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition">
+                                                            <i class="fa-solid fa-trash-can"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </main>
                     `;

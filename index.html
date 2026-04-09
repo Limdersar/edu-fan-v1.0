@@ -85,7 +85,8 @@
                     }
                 });
             } catch (err) {
-                console.error(err);
+                console.error("Firebase Init Error:", err);
+                render(); // 에러 발생 시에도 기본 화면은 띄움
             }
         }
 
@@ -94,18 +95,18 @@
             onSnapshot(q, (snap) => {
                 state.registrations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 render(); 
-            });
+            }, (err) => console.error("Data Listen Error:", err));
         }
 
         function listenToSettings() {
-            // 경로 수정: doc(db, '컬렉션', '문서ID') 구조로 변경하여 segments 짝수 유지
-            const docRef = doc(db, 'artifacts', appId, 'public', 'settings');
+            // 경로 수정: doc(db, 'artifacts', appId, 'settings', 'config') 와 같이 짝수 세그먼트로 고정
+            const docRef = doc(db, 'artifacts', appId, 'settings', 'config');
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     state.settings = docSnap.data();
                 }
                 render();
-            });
+            }, (err) => console.error("Settings Listen Error:", err));
         }
 
         window.selectSession = (date, time) => {
@@ -171,8 +172,9 @@
             const startAt = document.getElementById('settings-start').value;
             const endAt = document.getElementById('settings-end').value;
             try {
-                // 경로 수정: settings 데이터를 명확한 경로에 저장
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'settings'), { startAt, endAt });
+                // 경로 수정: 'artifacts' -> 'appId' -> 'settings' -> 'config' (정확히 4개 세그먼트)
+                const docRef = doc(db, 'artifacts', appId, 'settings', 'config');
+                await setDoc(docRef, { startAt, endAt });
                 alert("접수 기간 설정이 저장되었습니다.");
             } catch (err) {
                 alert("저장 실패: " + err.message);
@@ -195,7 +197,8 @@
         // --- 4. 렌더링 엔진 ---
         function render() {
             const appDiv = document.getElementById('app');
-            // 입력 폼 데이터 백업
+            if (!appDiv) return;
+
             const currentAgency = document.getElementById('input-agency')?.value || "";
             const currentName = document.getElementById('input-name')?.value || "";
             const currentPhone = document.getElementById('input-phone')?.value || "";

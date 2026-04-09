@@ -86,7 +86,6 @@
                 });
             } catch (err) {
                 console.error(err);
-                alert("초기화 실패: Firebase 설정을 확인하세요.");
             }
         }
 
@@ -99,7 +98,8 @@
         }
 
         function listenToSettings() {
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings');
+            // 경로 수정: doc(db, '컬렉션', '문서ID') 구조로 변경하여 segments 짝수 유지
+            const docRef = doc(db, 'artifacts', appId, 'public', 'settings');
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     state.settings = docSnap.data();
@@ -116,7 +116,6 @@
         async function handleRegister(e) {
             e.preventDefault();
             
-            // 기간 체크
             const now = new Date();
             if (state.settings.startAt && new Date(state.settings.startAt) > now) return alert("아직 접수 기간이 아닙니다.");
             if (state.settings.endAt && new Date(state.settings.endAt) < now) return alert("접수 기간이 종료되었습니다.");
@@ -172,7 +171,8 @@
             const startAt = document.getElementById('settings-start').value;
             const endAt = document.getElementById('settings-end').value;
             try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings'), { startAt, endAt });
+                // 경로 수정: settings 데이터를 명확한 경로에 저장
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'settings'), { startAt, endAt });
                 alert("접수 기간 설정이 저장되었습니다.");
             } catch (err) {
                 alert("저장 실패: " + err.message);
@@ -195,6 +195,7 @@
         // --- 4. 렌더링 엔진 ---
         function render() {
             const appDiv = document.getElementById('app');
+            // 입력 폼 데이터 백업
             const currentAgency = document.getElementById('input-agency')?.value || "";
             const currentName = document.getElementById('input-name')?.value || "";
             const currentPhone = document.getElementById('input-phone')?.value || "";
@@ -229,7 +230,7 @@
                             <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 text-center text-amber-800">
                                 <i class="fa-solid fa-clock-rotate-left text-2xl mb-2"></i>
                                 <p class="font-bold">${isEnded ? '접수 기간이 종료되었습니다.' : '아직 접수 기간이 아닙니다.'}</p>
-                                <p class="text-sm mt-1">접수 기간: ${state.settings.startAt || '미정'} ~ ${state.settings.endAt || '미정'}</p>
+                                <p class="text-sm mt-1">접수 기간: ${state.settings.startAt?.replace('T',' ') || '미정'} ~ ${state.settings.endAt?.replace('T',' ') || '미정'}</p>
                             </div>
                         ` : ''}
 
@@ -318,7 +319,6 @@
                             </div>
                         </nav>
                         <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
-                            <!-- Settings Card -->
                             <section class="bg-white p-6 rounded-2xl shadow-sm border">
                                 <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-clock text-blue-500"></i> 접수 기간 설정</h2>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -334,9 +334,8 @@
                                 </div>
                             </section>
 
-                            <!-- List Card -->
                             <div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
-                                <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
+                                <div class="p-4 bg-slate-50 border-b">
                                     <h3 class="font-bold">신청 명단 (${state.registrations.length}명)</h3>
                                 </div>
                                 <div class="overflow-x-auto">
@@ -347,7 +346,6 @@
                                                 <th class="px-6 py-4">대리점</th>
                                                 <th class="px-6 py-4">신청자</th>
                                                 <th class="px-6 py-4">연락처</th>
-                                                <th class="px-6 py-4">신청시각</th>
                                                 <th class="px-6 py-4">관리</th>
                                             </tr>
                                         </thead>
@@ -358,7 +356,6 @@
                                                     <td class="px-6 py-4">${r.agency}</td>
                                                     <td class="px-6 py-4 font-semibold text-slate-800">${r.name}</td>
                                                     <td class="px-6 py-4 text-slate-600">${r.phone}</td>
-                                                    <td class="px-6 py-4 text-slate-400 text-[10px]">${r.createdAt.slice(0,16).replace('T', ' ')}</td>
                                                     <td class="px-6 py-4">
                                                         <button onclick="window.deleteRegistration('${r.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded transition">
                                                             <i class="fa-solid fa-trash-can"></i>
@@ -383,7 +380,7 @@
                                 <i class="fa-solid fa-check"></i>
                             </div>
                             <h2 class="text-2xl font-bold">신청 완료</h2>
-                            <p class="text-slate-500">교육 접수가 정상적으로 완료되었습니다.<br>안내 문자를 기다려 주세요.</p>
+                            <p class="text-slate-500">교육 접수가 정상적으로 완료되었습니다.</p>
                             <button onclick="location.reload()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">홈으로 돌아가기</button>
                         </div>
                     </div>

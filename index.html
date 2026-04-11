@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 교육 신청 시스템</title>
+    <title>2026 경동나비엔 복합욕실팬 1차 교육 신청</title>
     <!-- CSS: Tailwind & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -15,6 +15,36 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .loading-overlay { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(4px); }
         
+        /* 3주 고정 캘린더 스타일 */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        .calendar-day { 
+            aspect-ratio: 1/1; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            position: relative;
+            border: 1px solid transparent;
+        }
+        .calendar-day.disabled { cursor: not-allowed; opacity: 0.2; pointer-events: none; }
+        .calendar-day.target { background-color: #f1f5f9; border-color: #e2e8f0; }
+        .calendar-day.target:hover { background-color: #e0f2fe; border-color: #bae6fd; transform: translateY(-1px); }
+        .calendar-day.selected { background-color: #2563eb !important; color: white !important; font-weight: bold; border-color: #2563eb; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+        
+        .calendar-day.has-dot::after {
+            content: '';
+            position: absolute;
+            bottom: 6px;
+            width: 4px;
+            height: 4px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+        }
+        .calendar-day.selected::after { background-color: white; }
+
         .session-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border-width: 2px; }
         .session-btn.selected { 
             border-color: #2563eb; 
@@ -47,11 +77,11 @@
             measurementId: "G-8BLR7P7N97"
         };
 
-        const appId = 'edu-reg-2026-v2'; 
+        const appId = 'navien-fan-edu-2026'; 
         const MAX_CAPACITY = 11;
         const ADMIN_PASSWORD = "admin1234";
         
-        // 요청하신 2026년 특정 날짜 리스트
+        // 2026년 교육 가능 날짜
         const TARGET_DATES = [
             "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29",
             "2026-05-06", "2026-05-07", "2026-05-08"
@@ -62,25 +92,20 @@
             "2026-04-23:오전",
             "2026-05-06:오전"
         ];
+
+        // 캘린더 표시 범위: 2026-04-19 (일) ~ 2026-05-09 (토) - 총 3주(21일)
+        const RANGE_START = new Date("2026-04-19");
+        const RANGE_END = new Date("2026-05-09");
         
         const TERMS = "개인정보 수집 및 이용에 동의합니다. (수집항목: 대리점명, 이름, 연락처 / 보유기간: 교육 종료 후 1년)";
-
-        const getDayOfWeek = (dateString) => {
-            const days = ['일', '월', '화', '수', '목', '금', '토'];
-            return days[new Date(dateString).getDay()];
-        };
-
-        const formatDisplayDate = (dateString) => {
-            const [y, m, d] = dateString.split('-');
-            return `${parseInt(m)}/${parseInt(d)} (${getDayOfWeek(dateString)})`;
-        };
 
         // --- 2. 상태 관리 ---
         let state = {
             view: 'registration',
             user: null,
             registrations: [],
-            selectedSession: null,
+            selectedDate: "2026-04-23", // 기본 선택 날짜
+            selectedTime: null,
             isAdminAuthenticated: false,
             isSubmitting: false,
             settings: {
@@ -135,13 +160,12 @@
             });
         }
 
-        window.selectSession = (date, time) => {
-            // 제외된 세션인 경우 선택 방지
-            if (EXCLUDED_SESSIONS.includes(`${date}:${time}`)) {
-                return;
-            }
-            state.selectedSession = { date, time };
-            render(); 
+        window.selectDate = (date) => {
+            setState({ selectedDate: date, selectedTime: null });
+        };
+
+        window.selectTime = (time) => {
+            setState({ selectedTime: time });
         };
 
         async function handleRegister(e) {
@@ -151,12 +175,7 @@
             if (state.settings.startAt && new Date(state.settings.startAt) > now) return alert("아직 접수 기간이 아닙니다.");
             if (state.settings.endAt && new Date(state.settings.endAt) < now) return alert("접수 기간이 종료되었습니다.");
 
-            if (!state.selectedSession) return alert("교육 회차를 선택해주세요.");
-
-            // 서버 측 로직 중복 검사 대비
-            if (EXCLUDED_SESSIONS.includes(`${state.selectedSession.date}:${state.selectedSession.time}`)) {
-                return alert("해당 세션은 현재 선택이 불가능합니다.");
-            }
+            if (!state.selectedDate || !state.selectedTime) return alert("교육 일자와 시간을 선택해주세요.");
             
             const agency = document.getElementById('input-agency').value;
             const name = document.getElementById('input-name').value;
@@ -172,8 +191,8 @@
                     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'registrations'));
                     const snap = await getDocs(q);
                     const count = snap.docs.filter(d => 
-                        d.data().date === state.selectedSession.date && 
-                        d.data().time === state.selectedSession.time
+                        d.data().date === state.selectedDate && 
+                        d.data().time === state.selectedTime
                     ).length;
 
                     if (count >= MAX_CAPACITY) throw new Error("이미 해당 회차의 정원이 마감되었습니다.");
@@ -181,8 +200,8 @@
                     const newDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'registrations'));
                     transaction.set(newDocRef, {
                         agency, name, phone,
-                        date: state.selectedSession.date,
-                        time: state.selectedSession.time,
+                        date: state.selectedDate,
+                        time: state.selectedTime,
                         createdAt: new Date().toISOString(),
                         userId: state.user.uid
                     });
@@ -215,20 +234,45 @@
             }
         };
 
-        function downloadCSV() {
-            const headers = ["신청날짜", "회차", "대리점", "이름", "연락처", "접수시각"];
-            const rows = state.registrations.sort((a,b) => a.date.localeCompare(b.date)).map(r => [
-                r.date, r.time, r.agency, r.name, r.phone, r.createdAt
-            ]);
-            const content = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
-            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `교육신청명단_2026.csv`;
-            link.click();
+        // --- 4. 렌더링 엔진 ---
+        function render3WeekCalendar() {
+            const dates = [];
+            let current = new Date(RANGE_START);
+            while (current <= RANGE_END) {
+                dates.push(new Date(current));
+                current.setDate(current.getDate() + 1);
+            }
+
+            const formatISO = (d) => d.toISOString().split('T')[0];
+
+            return `
+                <div class="calendar-grid">
+                    ${['일','월','화','수','목','금','토'].map(d => `<div class="text-center text-[11px] font-bold text-slate-400 py-1">${d}</div>`).join('')}
+                    ${dates.map(d => {
+                        const dateStr = formatISO(d);
+                        const isTarget = TARGET_DATES.includes(dateStr);
+                        const isSelected = state.selectedDate === dateStr;
+                        const day = d.getDate();
+                        const month = d.getMonth() + 1;
+                        const isSunday = d.getDay() === 0;
+                        const isSaturday = d.getDay() === 6;
+
+                        return `
+                            <div onclick="${isTarget ? `window.selectDate('${dateStr}')` : ''}" 
+                                class="calendar-day text-sm ${isTarget ? 'target has-dot' : 'disabled'} ${isSelected ? 'selected' : ''}">
+                                <span class="text-[10px] opacity-60 mb-0.5">${day === 1 || d.getTime() === RANGE_START.getTime() ? month + '/' : ''}</span>
+                                <span class="${!isTarget ? '' : isSunday ? 'text-red-500' : isSaturday ? 'text-blue-500' : ''} ${isSelected ? '!text-white' : ''}">${day}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div class="mt-4 flex items-center justify-center gap-4 text-[11px] text-slate-400 font-medium">
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> 교육 가능일</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-200"></span> 일정 없음</span>
+                </div>
+            `;
         }
 
-        // --- 4. 렌더링 엔진 ---
         function render() {
             const appDiv = document.getElementById('app');
             if (!appDiv) return;
@@ -247,8 +291,9 @@
                 appDiv.innerHTML = `
                     <nav class="bg-white border-b sticky top-0 z-20">
                         <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-                            <h1 class="font-bold text-blue-700 text-lg flex items-center gap-2">
-                                <i class="fa-solid fa-calendar-check"></i> 2026 교육 신청
+                            <h1 class="font-bold text-slate-800 text-base md:text-lg flex items-center gap-2">
+                                <span class="bg-blue-600 text-white w-8 h-8 rounded-lg flex items-center justify-center"><i class="fa-solid fa-wind text-sm"></i></span>
+                                2026 경동나비엔 복합욕실팬 1차 교육
                             </h1>
                             <button onclick="window.toAdmin()" class="p-2 text-slate-400 hover:text-blue-600 transition-colors">
                                 <i class="fa-solid fa-gear"></i>
@@ -256,15 +301,15 @@
                         </div>
                     </nav>
 
-                    <main class="max-w-5xl mx-auto px-4 py-8">
+                    <main class="max-w-5xl mx-auto px-4 py-6 md:py-10">
                         ${!canRegister ? `
                             <div class="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 text-center text-amber-800 shadow-sm animate-pulse">
                                 <p class="font-bold">${isEnded ? '접수 기간이 종료되었습니다.' : '아직 접수 기간이 아닙니다.'}</p>
-                                <p class="text-sm mt-1 opacity-80">접수 기간: ${state.settings.startAt?.replace('T',' ') || '미정'} ~ ${state.settings.endAt?.replace('T',' ') || '미정'}</p>
                             </div>
                         ` : ''}
 
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 ${!canRegister ? 'opacity-50 pointer-events-none' : ''}">
+                            <!-- Left: Personal Info -->
                             <section class="space-y-6">
                                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                     <h2 class="text-lg font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i> 신청자 정보</h2>
@@ -273,13 +318,15 @@
                                             <label class="text-sm font-semibold text-slate-600 block mb-1">대리점명</label>
                                             <input id="input-agency" type="text" required placeholder="대리점명을 입력하세요" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentAgency}">
                                         </div>
-                                        <div>
-                                            <label class="text-sm font-semibold text-slate-600 block mb-1">신청자 성함</label>
-                                            <input id="input-name" type="text" required placeholder="성함을 입력하세요" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentName}">
-                                        </div>
-                                        <div>
-                                            <label class="text-sm font-semibold text-slate-600 block mb-1">연락처</label>
-                                            <input id="input-phone" type="tel" required placeholder="010-0000-0000" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentPhone}">
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-sm font-semibold text-slate-600 block mb-1">성함</label>
+                                                <input id="input-name" type="text" required placeholder="이름" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentName}">
+                                            </div>
+                                            <div>
+                                                <label class="text-sm font-semibold text-slate-600 block mb-1">연락처</label>
+                                                <input id="input-phone" type="tel" required placeholder="010-0000-0000" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentPhone}">
+                                            </div>
                                         </div>
                                         <div class="pt-4 border-t">
                                             <label class="flex items-start gap-3 cursor-pointer group">
@@ -287,56 +334,64 @@
                                                 <span class="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">${TERMS}</span>
                                             </label>
                                         </div>
-                                        <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 hover:shadow-blue-200 active:scale-[0.98] transition-all">신청하기</button>
+                                        <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-[0.98] transition-all">신청하기</button>
                                     </form>
+                                </div>
+                                <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100">
+                                    <h4 class="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> 교육 안내</h4>
+                                    <ul class="text-xs text-blue-700 space-y-1.5 list-disc pl-4 opacity-80">
+                                        <li>정원 충족 시 해당 회차는 조기 마감될 수 있습니다.</li>
+                                        <li>교육 시작 10분 전까지 입실 완료 부탁드립니다.</li>
+                                        <li>신청 내역 변경은 관리자에게 문의 바랍니다.</li>
+                                    </ul>
                                 </div>
                             </section>
 
-                            <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full">
-                                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-clock text-blue-500"></i> 교육 일정 선택</h2>
-                                <div class="grid grid-cols-1 gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1" style="max-height: 520px;">
-                                    ${TARGET_DATES.map(dateStr => {
-                                        const displayDate = formatDisplayDate(dateStr);
-                                        
-                                        const sessionInfo = ['오전', '오후'].map(time => {
-                                            const regs = state.registrations.filter(r => r.date === dateStr && r.time === time).length;
-                                            const isExcluded = EXCLUDED_SESSIONS.includes(`${dateStr}:${time}`);
-                                            const isSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === time;
-                                            const remaining = MAX_CAPACITY - regs;
-                                            const isDisabled = isExcluded || remaining <= 0;
-                                            
-                                            return { time, regs, isExcluded, isSelected, remaining, isDisabled };
-                                        });
+                            <!-- Right: Calendar & Session Selection -->
+                            <section class="space-y-6">
+                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                                    <h2 class="text-lg font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-calendar-days text-blue-500"></i> 교육 날짜 (4/19 - 5/9)</h2>
+                                    <div class="calendar-container">
+                                        ${render3WeekCalendar()}
+                                    </div>
+                                    
+                                    <div class="mt-8 pt-6 border-t animate-in slide-in-from-top-2 duration-300">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="text-sm font-bold text-slate-700">
+                                                <i class="fa-solid fa-clock mr-1 text-blue-400"></i> 
+                                                <span class="text-blue-600">${state.selectedDate}</span> 교육 시간 선택
+                                            </h3>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            ${['오전', '오후'].map(time => {
+                                                const regs = state.registrations.filter(r => r.date === state.selectedDate && r.time === time).length;
+                                                const isExcluded = EXCLUDED_SESSIONS.includes(`${state.selectedDate}:${time}`);
+                                                const remaining = MAX_CAPACITY - regs;
+                                                const isDisabled = isExcluded || remaining <= 0;
+                                                const isSelected = state.selectedTime === time;
 
-                                        return `
-                                            <div class="p-4 border border-slate-100 bg-slate-50 rounded-2xl">
-                                                <div class="text-sm font-bold text-slate-800 mb-3 ml-1 flex items-center gap-2">
-                                                    <i class="fa-solid fa-calendar-day text-blue-400"></i> ${displayDate}
-                                                </div>
-                                                <div class="grid grid-cols-2 gap-3">
-                                                    ${sessionInfo.map(info => `
-                                                        <button onclick="window.selectSession('${dateStr}', '${info.time}')" 
-                                                            ${info.isDisabled ? 'disabled' : ''}
-                                                            class="session-btn p-3 rounded-xl border-2 text-left relative ${
-                                                                info.isSelected ? 'selected' :
-                                                                !info.isDisabled ? 'bg-white border-slate-100' : 
-                                                                'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
-                                                            }">
-                                                            <div class="font-bold text-sm ${!info.isDisabled ? 'text-slate-700' : 'text-slate-400'}">${info.time === '오전' ? '오전 9시' : '오후 2시'}</div>
-                                                            <div class="mt-1 flex flex-col">
-                                                                <span class="text-[10px] text-slate-400 font-medium">
-                                                                    ${info.isExcluded ? '-' : info.regs}/${info.isExcluded ? '-' : MAX_CAPACITY}
-                                                                </span>
-                                                                <span class="text-[11px] font-bold ${!info.isDisabled ? 'text-blue-600' : 'text-slate-400'}">
-                                                                    ${info.isExcluded ? '선택 불가' : (info.remaining <= 0 ? '마감' : info.remaining + '석 남음')}
-                                                                </span>
+                                                return `
+                                                    <button onclick="window.selectTime('${time}')" 
+                                                        ${isDisabled ? 'disabled' : ''}
+                                                        class="session-btn p-4 rounded-2xl border-2 text-left transition-all ${
+                                                            isSelected ? 'selected' :
+                                                            !isDisabled ? 'bg-white border-slate-100 hover:border-blue-200' : 
+                                                            'bg-slate-100 border-transparent opacity-50 cursor-not-allowed'
+                                                        }">
+                                                        <div class="font-bold ${!isDisabled ? 'text-slate-800' : 'text-slate-400'}">
+                                                            ${time === '오전' ? '오전 9시' : '오후 2시'}
+                                                        </div>
+                                                        <div class="mt-2">
+                                                            <div class="text-[10px] text-slate-400 mb-1">신청현황 ${isExcluded ? '-' : regs}/${isExcluded ? '-' : MAX_CAPACITY}</div>
+                                                            <div class="text-[12px] font-bold ${!isDisabled ? 'text-blue-600' : 'text-slate-400'}">
+                                                                ${isExcluded ? '선택 불가' : (remaining <= 0 ? '마감됨' : remaining + '석 남음')}
                                                             </div>
-                                                        </button>
-                                                    `).join('')}
-                                                </div>
-                                            </div>
-                                        `;
-                                    }).join('')}
+                                                        </div>
+                                                    </button>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
                                 </div>
                             </section>
                         </div>
@@ -349,7 +404,7 @@
             else if (state.view === 'admin') {
                 if (!state.isAdminAuthenticated) {
                     appDiv.innerHTML = `
-                        <div class="min-h-screen flex items-center justify-center p-4">
+                        <div class="min-h-screen flex items-center justify-center p-4 bg-slate-50">
                             <div class="bg-white p-8 rounded-2xl shadow-sm border w-full max-w-md">
                                 <h2 class="text-xl font-bold mb-6">관리자 로그인</h2>
                                 <input id="admin-pw" type="password" class="w-full p-4 border rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" placeholder="비밀번호">
@@ -363,10 +418,7 @@
                         <nav class="bg-white border-b sticky top-0 z-20">
                             <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
                                 <h1 class="font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-user-shield text-blue-600"></i> 관리자 패널</h1>
-                                <div class="flex gap-2">
-                                    <button onclick="window.downloadCSV()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"><i class="fa-solid fa-download mr-2"></i>엑셀</button>
-                                    <button onclick="window.setView('registration')" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200">나가기</button>
-                                </div>
+                                <button onclick="window.setView('registration')" class="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">나가기</button>
                             </div>
                         </nav>
                         <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -387,27 +439,27 @@
 
                             <div class="bg-white rounded-2xl shadow-sm border overflow-hidden">
                                 <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
-                                    <h3 class="font-bold">신청 명단 (${state.registrations.length}명)</h3>
+                                    <h3 class="font-bold text-slate-700">신청 명단 (${state.registrations.length}명)</h3>
                                 </div>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm text-left">
-                                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase">
+                                        <thead class="bg-slate-50 text-slate-500 font-semibold">
                                             <tr>
                                                 <th class="px-6 py-4">교육일시</th>
                                                 <th class="px-6 py-4">대리점</th>
                                                 <th class="px-6 py-4">신청자</th>
                                                 <th class="px-6 py-4">연락처</th>
-                                                <th class="px-6 py-4">관리</th>
+                                                <th class="px-6 py-4 text-center">관리</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y">
                                             ${state.registrations.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(r => `
                                                 <tr class="hover:bg-slate-50 transition">
-                                                    <td class="px-6 py-4 font-bold text-blue-600">${formatDisplayDate(r.date)} ${r.time}</td>
+                                                    <td class="px-6 py-4 font-bold text-blue-600">${r.date} ${r.time}</td>
                                                     <td class="px-6 py-4">${r.agency}</td>
                                                     <td class="px-6 py-4 font-semibold text-slate-800">${r.name}</td>
                                                     <td class="px-6 py-4 text-slate-600">${r.phone}</td>
-                                                    <td class="px-6 py-4">
+                                                    <td class="px-6 py-4 text-center">
                                                         <button onclick="window.deleteRegistration('${r.id}')" class="text-red-400 hover:text-red-600 p-2 rounded transition-colors">
                                                             <i class="fa-solid fa-trash-can"></i>
                                                         </button>
@@ -432,8 +484,8 @@
                                 <i class="fa-solid fa-check"></i>
                             </div>
                             <div class="space-y-2">
-                                <h2 class="text-2xl font-bold">신청 완료</h2>
-                                <p class="text-slate-500">교육 접수가 정상적으로 완료되었습니다.</p>
+                                <h2 class="text-2xl font-bold text-slate-800">신청이 완료되었습니다!</h2>
+                                <p class="text-slate-500">2026 경동나비엔 복합욕실팬 교육 신청이 성공적으로 접수되었습니다.</p>
                             </div>
                             <button onclick="location.reload()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors">홈으로 돌아가기</button>
                         </div>
@@ -449,7 +501,6 @@
             if (val === ADMIN_PASSWORD) setState({ isAdminAuthenticated: true });
             else alert("비밀번호가 틀렸습니다.");
         };
-        window.downloadCSV = downloadCSV;
 
         initFirebase();
         render();

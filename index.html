@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -56,6 +55,12 @@
         const TARGET_DATES = [
             "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29",
             "2026-05-06", "2026-05-07", "2026-05-08"
+        ];
+
+        // 특정 제외 세션 (날짜:시간)
+        const EXCLUDED_SESSIONS = [
+            "2026-04-23:오전",
+            "2026-05-06:오전"
         ];
         
         const TERMS = "개인정보 수집 및 이용에 동의합니다. (수집항목: 대리점명, 이름, 연락처 / 보유기간: 교육 종료 후 1년)";
@@ -131,6 +136,10 @@
         }
 
         window.selectSession = (date, time) => {
+            // 제외된 세션인 경우 선택 방지
+            if (EXCLUDED_SESSIONS.includes(`${date}:${time}`)) {
+                return;
+            }
             state.selectedSession = { date, time };
             render(); 
         };
@@ -143,6 +152,11 @@
             if (state.settings.endAt && new Date(state.settings.endAt) < now) return alert("접수 기간이 종료되었습니다.");
 
             if (!state.selectedSession) return alert("교육 회차를 선택해주세요.");
+
+            // 서버 측 로직 중복 검사 대비
+            if (EXCLUDED_SESSIONS.includes(`${state.selectedSession.date}:${state.selectedSession.time}`)) {
+                return alert("해당 세션은 현재 선택이 불가능합니다.");
+            }
             
             const agency = document.getElementById('input-agency').value;
             const name = document.getElementById('input-name').value;
@@ -283,14 +297,16 @@
                                 <div class="grid grid-cols-1 gap-4 overflow-y-auto pr-2 custom-scrollbar flex-1" style="max-height: 520px;">
                                     ${TARGET_DATES.map(dateStr => {
                                         const displayDate = formatDisplayDate(dateStr);
-                                        const amRegs = state.registrations.filter(r => r.date === dateStr && r.time === '오전').length;
-                                        const pmRegs = state.registrations.filter(r => r.date === dateStr && r.time === '오후').length;
                                         
-                                        const isAmSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === '오전';
-                                        const isPmSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === '오후';
-
-                                        const amRemaining = MAX_CAPACITY - amRegs;
-                                        const pmRemaining = MAX_CAPACITY - pmRegs;
+                                        const sessionInfo = ['오전', '오후'].map(time => {
+                                            const regs = state.registrations.filter(r => r.date === dateStr && r.time === time).length;
+                                            const isExcluded = EXCLUDED_SESSIONS.includes(`${dateStr}:${time}`);
+                                            const isSelected = state.selectedSession?.date === dateStr && state.selectedSession?.time === time;
+                                            const remaining = MAX_CAPACITY - regs;
+                                            const isDisabled = isExcluded || remaining <= 0;
+                                            
+                                            return { time, regs, isExcluded, isSelected, remaining, isDisabled };
+                                        });
 
                                         return `
                                             <div class="p-4 border border-slate-100 bg-slate-50 rounded-2xl">
@@ -298,38 +314,25 @@
                                                     <i class="fa-solid fa-calendar-day text-blue-400"></i> ${displayDate}
                                                 </div>
                                                 <div class="grid grid-cols-2 gap-3">
-                                                    <!-- 오전 버튼 -->
-                                                    <button onclick="window.selectSession('${dateStr}', '오전')" 
-                                                        ${amRemaining <= 0 ? 'disabled' : ''}
-                                                        class="session-btn p-3 rounded-xl border-2 text-left relative ${
-                                                            isAmSelected ? 'selected' :
-                                                            amRemaining > 0 ? 'bg-white border-slate-100' : 
-                                                            'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
-                                                        }">
-                                                        <div class="font-bold text-sm ${amRemaining > 0 ? 'text-slate-700' : 'text-slate-400'}">오전 9시</div>
-                                                        <div class="mt-1 flex flex-col">
-                                                            <span class="text-[10px] text-slate-400 font-medium">${amRegs}/${MAX_CAPACITY}</span>
-                                                            <span class="text-[11px] font-bold ${amRemaining > 0 ? 'text-blue-600' : 'text-slate-400'}">
-                                                                ${amRemaining <= 0 ? '마감' : amRemaining + '석 남음'}
-                                                            </span>
-                                                        </div>
-                                                    </button>
-                                                    <!-- 오후 버튼 -->
-                                                    <button onclick="window.selectSession('${dateStr}', '오후')" 
-                                                        ${pmRemaining <= 0 ? 'disabled' : ''}
-                                                        class="session-btn p-3 rounded-xl border-2 text-left relative ${
-                                                            isPmSelected ? 'selected' :
-                                                            pmRemaining > 0 ? 'bg-white border-slate-100' : 
-                                                            'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
-                                                        }">
-                                                        <div class="font-bold text-sm ${pmRemaining > 0 ? 'text-slate-700' : 'text-slate-400'}">오후 2시</div>
-                                                        <div class="mt-1 flex flex-col">
-                                                            <span class="text-[10px] text-slate-400 font-medium">${pmRegs}/${MAX_CAPACITY}</span>
-                                                            <span class="text-[11px] font-bold ${pmRemaining > 0 ? 'text-blue-600' : 'text-slate-400'}">
-                                                                ${pmRemaining <= 0 ? '마감' : pmRemaining + '석 남음'}
-                                                            </span>
-                                                        </div>
-                                                    </button>
+                                                    ${sessionInfo.map(info => `
+                                                        <button onclick="window.selectSession('${dateStr}', '${info.time}')" 
+                                                            ${info.isDisabled ? 'disabled' : ''}
+                                                            class="session-btn p-3 rounded-xl border-2 text-left relative ${
+                                                                info.isSelected ? 'selected' :
+                                                                !info.isDisabled ? 'bg-white border-slate-100' : 
+                                                                'bg-slate-200 border-transparent opacity-60 cursor-not-allowed'
+                                                            }">
+                                                            <div class="font-bold text-sm ${!info.isDisabled ? 'text-slate-700' : 'text-slate-400'}">${info.time === '오전' ? '오전 9시' : '오후 2시'}</div>
+                                                            <div class="mt-1 flex flex-col">
+                                                                <span class="text-[10px] text-slate-400 font-medium">
+                                                                    ${info.isExcluded ? '-' : info.regs}/${info.isExcluded ? '-' : MAX_CAPACITY}
+                                                                </span>
+                                                                <span class="text-[11px] font-bold ${!info.isDisabled ? 'text-blue-600' : 'text-slate-400'}">
+                                                                    ${info.isExcluded ? '선택 불가' : (info.remaining <= 0 ? '마감' : info.remaining + '석 남음')}
+                                                                </span>
+                                                            </div>
+                                                        </button>
+                                                    `).join('')}
                                                 </div>
                                             </div>
                                         `;
@@ -454,5 +457,3 @@
     </script>
 </body>
 </html>
-
-```

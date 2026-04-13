@@ -81,19 +81,16 @@
         const MAX_CAPACITY = 11;
         const ADMIN_PASSWORD = "admin1234";
         
-        // 2026년 교육 가능 날짜
         const TARGET_DATES = [
             "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29",
             "2026-05-06", "2026-05-07", "2026-05-08"
         ];
 
-        // 특정 제외 세션 (날짜:시간)
         const EXCLUDED_SESSIONS = [
             "2026-04-23:오전",
             "2026-05-06:오전"
         ];
 
-        // 캘린더 표시 범위: 2026-04-19 (일) ~ 2026-05-09 (토) - 총 3주(21일)
         const RANGE_START = new Date("2026-04-19");
         const RANGE_END = new Date("2026-05-09");
         
@@ -104,7 +101,7 @@
             view: 'registration',
             user: null,
             registrations: [],
-            selectedDate: "2026-04-23", // 기본 선택 날짜
+            selectedDate: "2026-04-23",
             selectedTime: null,
             isAdminAuthenticated: false,
             isSubmitting: false,
@@ -266,10 +263,6 @@
                         `;
                     }).join('')}
                 </div>
-                <div class="mt-4 flex items-center justify-center gap-4 text-[11px] text-slate-400 font-medium">
-                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> 교육 가능일</span>
-                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-200"></span> 일정 없음</span>
-                </div>
             `;
         }
 
@@ -308,12 +301,12 @@
                             </div>
                         ` : ''}
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 ${!canRegister ? 'opacity-50 pointer-events-none' : ''}">
-                            <!-- Left: Personal Info -->
-                            <section class="space-y-6">
-                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <form id="main-form" class="grid grid-cols-1 lg:grid-cols-2 gap-8 ${!canRegister ? 'opacity-50 pointer-events-none' : ''}">
+                            <!-- Left Section: Personal Info & Guide -->
+                            <div class="space-y-6">
+                                <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                     <h2 class="text-lg font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-id-card text-blue-500"></i> 신청자 정보</h2>
-                                    <form id="main-form" class="space-y-4">
+                                    <div class="space-y-4">
                                         <div>
                                             <label class="text-sm font-semibold text-slate-600 block mb-1">대리점명</label>
                                             <input id="input-agency" type="text" required placeholder="대리점명을 입력하세요" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" value="${currentAgency}">
@@ -334,9 +327,9 @@
                                                 <span class="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">${TERMS}</span>
                                             </label>
                                         </div>
-                                        <button type="submit" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-[0.98] transition-all">신청하기</button>
-                                    </form>
-                                </div>
+                                    </div>
+                                </section>
+
                                 <div class="bg-blue-50 p-5 rounded-2xl border border-blue-100">
                                     <h4 class="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-circle-info"></i> 교육 안내</h4>
                                     <ul class="text-xs text-blue-700 space-y-1.5 list-disc pl-4 opacity-80 font-medium">
@@ -347,17 +340,17 @@
                                         <li class="font-bold underline">신청 내역 변경은 관리자에게 문의 바랍니다.(02-559-8381)</li>
                                     </ul>
                                 </div>
-                            </section>
+                            </div>
 
-                            <!-- Right: Calendar & Session Selection -->
-                            <section class="space-y-6">
-                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <!-- Right Section: Calendar & Submit -->
+                            <div class="space-y-6">
+                                <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                     <h2 class="text-lg font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-calendar-days text-blue-500"></i> 교육 날짜 (4/23 - 5/8)</h2>
                                     <div class="calendar-container">
                                         ${render3WeekCalendar()}
                                     </div>
                                     
-                                    <div class="mt-8 pt-6 border-t animate-in slide-in-from-top-2 duration-300">
+                                    <div class="mt-8 pt-6 border-t">
                                         <div class="flex items-center justify-between mb-4">
                                             <h3 class="text-sm font-bold text-slate-700">
                                                 <i class="fa-solid fa-clock mr-1 text-blue-400"></i> 
@@ -373,7 +366,7 @@
                                                 const isSelected = state.selectedTime === time;
 
                                                 return `
-                                                    <button onclick="window.selectTime('${time}')" 
+                                                    <button type="button" onclick="window.selectTime('${time}')" 
                                                         ${isDisabled ? 'disabled' : ''}
                                                         class="session-btn p-4 rounded-2xl border-2 text-left transition-all ${
                                                             isSelected ? 'selected' :
@@ -394,9 +387,17 @@
                                             }).join('')}
                                         </div>
                                     </div>
-                                </div>
-                            </section>
-                        </div>
+
+                                    <!-- Submit Button Moved Here -->
+                                    <div class="mt-8 pt-6 border-t">
+                                        <button type="submit" class="w-full bg-blue-600 text-white py-5 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+                                            신청하기 <i class="fa-solid fa-paper-plane text-sm"></i>
+                                        </button>
+                                        <p class="text-center text-[11px] text-slate-400 mt-3">정보 입력과 날짜/시간 선택을 모두 마친 후 버튼을 눌러주세요.</p>
+                                    </div>
+                                </section>
+                            </div>
+                        </form>
                     </main>
                     ${state.isSubmitting ? '<div class="fixed inset-0 loading-overlay flex items-center justify-center z-50"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>' : ''}
                 `;
@@ -510,3 +511,5 @@
     </script>
 </body>
 </html>
+
+```
